@@ -8,16 +8,29 @@ let selectedSubject = null;
 const $ = id => document.getElementById(id);
 const subjects = {
   mma: {
-    button: 'subject-mma', file: './regulamentacao.js', key: 'REGULAMENTACAO_BANK',
+    button: 'subject-mma', file: './materias/regulamentacao.js', key: 'REGULAMENTACAO_BANK',
     label: 'MMA · Regulamentação',
     intro: 'Treine as regras da profissão de mecânico de manutenção aeronáutica, licenças, registros de manutenção e segurança operacional em sessões rápidas. Sem cadastro e sem histórico.',
     notice: 'Material didático de revisão com referências oficiais por questão. Confira sempre a versão vigente dos RBACs antes de atuar; este simulado não substitui normas ou dados de manutenção aprovados. Nenhuma resposta é enviada ou armazenada.'
   },
   corrosion: {
-    button: 'subject-corrosion', file: './corrosion.js', key: 'CORROSION_BANK',
+    button: 'subject-corrosion', file: './materias/corrosion.js', key: 'CORROSION_BANK',
     label: 'Controle de Corrosão',
     intro: 'Treine prevenção, materiais, inspeção e manutenção no controle de corrosão em materiais aeronáuticos. Sem cadastro e sem histórico.',
     notice: 'Fontes FAA e OSHA são citadas para estudo, não como autorização de serviço no Brasil. Siga as normas ANAC, os dados de manutenção e as regras de segurança locais aplicáveis. Nenhuma resposta é enviada ou armazenada.'
+  },
+  metrology: {
+    button: 'subject-metrology', file: './materias/metrology.js', key: 'METROLOGY_BANK',
+    label: 'Metrologia e Ferramentas',
+    intro: 'Pratique leitura e seleção de instrumentos, tolerâncias, torque, ferramentas manuais e cuidados de inspeção na manutenção aeronáutica.',
+    notice: 'Referências FAA são usadas como material didático, não como autorização de serviço no Brasil. Siga as normas ANAC e os dados de manutenção aplicáveis à aeronave, incluindo especificações de ferramenta e calibração. Nenhuma resposta é enviada ou armazenada.'
+  },
+  electricity: {
+    button: 'subject-electricity', file: './materias/eletricidade.js', key: 'ELECTRICITY_BANK',
+    files: ['./materias/eletricidade-fundamentos.js', './materias/eletricidade-magnetismo-ca.js', './materias/eletricidade-componentes-medidores.js', './materias/eletricidade.js'],
+    label: 'Eletricidade Básica',
+    intro: 'Estude fundamentos de carga, tensão, corrente, resistência, Lei de Ohm, circuitos, fontes e instrumentos elétricos usados na manutenção aeronáutica.',
+    notice: 'Referências FAA são material didático, não autorização de serviço. Siga os diagramas, procedimentos de segurança e dados de manutenção aplicáveis à aeronave. Nenhuma resposta é enviada ou armazenada.'
   }
 };
 
@@ -61,6 +74,15 @@ function validBank(bank, subject) {
         }
         const domains = { FAA: 'faa.gov', OSHA: 'osha.gov' };
         const domain = domains[source.agency];
+        if (subject === 'metrology' || subject === 'electricity') {
+          const chapter = subject === 'metrology' ? /Cap\. (?:1|3|7|11), p\. (?:1-\d+|3-\d+|7-\d+|11-\d+)/
+            : /Cap\. 12, p\. 12-\d+/;
+          const handbook = /^FAA-H-8083-30B,/.test(source.section) && chapter.test(source.section);
+          const handbookFile = 'amtg_handbook.pdf';
+          return source.agency === 'FAA' && handbook &&
+            (url.hostname === 'faa.gov' || url.hostname.endsWith('.faa.gov')) &&
+            url.pathname.endsWith(handbookFile);
+        }
         const reference = source.agency === 'FAA'
           ? /^(?:AC 43-4B §|AC 43\.13-1B ¶|FAA-H-8083-30B, Cap\. 8, p\. 8-)/.test(source.section)
           : /^29 CFR §1910\.1200\([fg]\)$/.test(source.section);
@@ -83,24 +105,28 @@ async function chooseSubject(config) {
   status.textContent = 'Carregando as questões...';
   try {
     if (!window[config.key]) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = config.file;
-        script.onload = resolve;
-        script.onerror = () => {
-          script.remove();
-          reject(new Error('Não foi possível carregar o banco de questões. Tente novamente.'));
-        };
-        document.head.append(script);
-      });
+      for (const file of config.files || [config.file]) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = file;
+          script.onload = resolve;
+          script.onerror = () => {
+            script.remove();
+            reject(new Error('Não foi possível carregar o banco de questões. Tente novamente.'));
+          };
+          document.head.append(script);
+        });
+      }
     }
-    if (!validBank(window[config.key], config === subjects.mma ? 'mma' : 'corrosion')) {
+    const subject = config === subjects.mma ? 'mma' : config === subjects.corrosion ? 'corrosion'
+      : config === subjects.metrology ? 'metrology' : 'electricity';
+    if (!validBank(window[config.key], subject)) {
       delete window[config.key];
       document.querySelector(`script[src="${config.file}"]`)?.remove();
       throw new Error('O banco de questões está incompleto ou inválido. Tente novamente.');
     }
     selectedBank = window[config.key];
-    selectedSubject = config === subjects.mma ? 'mma' : 'corrosion';
+    selectedSubject = subject;
     $('subject-intro').textContent = config.intro;
     document.querySelector('.tag').textContent = config.label;
     document.querySelector('.notice').textContent = config.notice;
@@ -116,6 +142,8 @@ async function chooseSubject(config) {
 
 $('subject-mma').onclick = () => chooseSubject(subjects.mma);
 $('subject-corrosion').onclick = () => chooseSubject(subjects.corrosion);
+$('subject-metrology').onclick = () => chooseSubject(subjects.metrology);
+$('subject-electricity').onclick = () => chooseSubject(subjects.electricity);
 $('change-subject').onclick = () => show('subjects');
 function choose(n) {
   size = n;

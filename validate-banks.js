@@ -4,11 +4,19 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 for (const [file, key, subject] of [
-  ['regulamentacao.js', 'REGULAMENTACAO_BANK', 'mma'],
-  ['corrosion.js', 'CORROSION_BANK', 'corrosion']
+  ['materias/regulamentacao.js', 'REGULAMENTACAO_BANK', 'mma'],
+  ['materias/corrosion.js', 'CORROSION_BANK', 'corrosion'],
+  ['materias/metrology.js', 'METROLOGY_BANK', 'metrology'],
+  ['materias/eletricidade.js', 'ELECTRICITY_BANK', 'electricity']
 ]) {
   const context = { window: {} };
-  vm.runInNewContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
+  const files = subject === 'electricity'
+    ? ['materias/eletricidade-fundamentos.js', 'materias/eletricidade-magnetismo-ca.js',
+      'materias/eletricidade-componentes-medidores.js', file]
+    : [file];
+  for (const sourceFile of files) {
+    vm.runInNewContext(fs.readFileSync(sourceFile, 'utf8'), context, { filename: sourceFile });
+  }
   const bank = context.window[key];
   assert.ok(Array.isArray(bank), `${file}: banco ausente`);
   assert.equal(bank.length, 150, `${file}: número de questões`);
@@ -28,7 +36,7 @@ for (const [file, key, subject] of [
     if (subject === 'mma') {
       assert.equal(item.source.agency, 'ANAC', `${at}: órgão oficial`);
       assert.match(item.source?.section || '', /^RBAC (?:65|43|145|39) (?:\d+\.\d+|Apêndice [A-E])/, `${at}: dispositivo`);
-    } else {
+    } else if (subject === 'corrosion') {
       assert.ok(['FAA', 'OSHA'].includes(item.source.agency), `${at}: órgão técnico oficial`);
       assert.match(item.source.section, item.source.agency === 'FAA'
         ? /^(?:AC 43-4B §|AC 43\.13-1B ¶|FAA-H-8083-30B, Cap\. 8, p\. 8-)/
@@ -40,7 +48,7 @@ for (const [file, key, subject] of [
       assert.ok(url.hostname === 'anac.gov.br' || url.hostname.endsWith('.anac.gov.br') ||
         ((url.hostname === 'gov.br' || url.hostname === 'www.gov.br') && url.pathname.startsWith('/anac/')), `${at}: domínio oficial`);
       assert.ok(decodeURIComponent(url.pathname).toUpperCase().replace(/\s+/g, '').includes(`RBAC${item.source.section.match(/^RBAC (\d+)/)[1]}`), `${at}: norma e URL divergentes`);
-    } else {
+    } else if (subject === 'corrosion') {
       const domain = { FAA: 'faa.gov', OSHA: 'osha.gov' }[item.source.agency];
       assert.ok(url.hostname === domain || url.hostname.endsWith(`.${domain}`), `${at}: domínio oficial`);
       if (item.source.agency === 'FAA') {
@@ -51,6 +59,13 @@ for (const [file, key, subject] of [
       } else {
         assert.equal(url.pathname, '/laws-regs/regulations/standardnumber/1910/1910.1200', `${at}: norma OSHA e URL divergentes`);
       }
+    } else if (subject === 'metrology' || subject === 'electricity') {
+      assert.equal(item.source.agency, 'FAA', `${at}: órgão metrologia`);
+      assert.match(item.source.section, subject === 'metrology'
+        ? /^FAA-H-8083-30B, Cap\. (?:1|3|7|11), p\. (?:1-\d+|3-\d+|7-\d+|11-\d+)/
+        : /^FAA-H-8083-30B, Cap\. 12, p\. 12-\d+/, `${at}: referência FAA`);
+      assert.ok(url.hostname === 'faa.gov' || url.hostname.endsWith('.faa.gov'), `${at}: domínio FAA`);
+      assert.ok(url.pathname.endsWith('amtg_handbook.pdf'), `${at}: handbook e URL divergentes`);
     }
     assert.match(item.source.reviewed, /^\d{4}-\d{2}-\d{2}$/, `${at}: data de consulta`);
   });
